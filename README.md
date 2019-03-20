@@ -4,12 +4,38 @@
   
     
     
-This is a tutorial on how to use [Azure Machine Learning SDK for Python](https://docs.microsoft.com/en-us/python/api/overview/azure/ml/intro?view=azure-ml-py) (__AML SDK__) to operationalize pre-trained R models at scale in the cloud via [Azure Kubernetes Service](https://docs.microsoft.com/en-us/azure/aks/). We focus here on plain (i.e. not deep learning) machine learning (__ML__) and use a Kernel SVM based R model, but the solution can be generalized for any pre-trained R model and corresponding R scoring script. 
+This is a tutorial on how to use [Azure Machine Learning SDK for Python](https://docs.microsoft.com/en-us/python/api/overview/azure/ml/intro?view=azure-ml-py) (__AML SDK__) to operationalize (Figure 1) pre-trained R models at scale in the cloud via [Azure Kubernetes Service](https://docs.microsoft.com/en-us/azure/aks/). We focus here on plain (i.e. not deep learning) machine learning (__ML__) and use a Kernel SVM based R model, but the solution can be generalized for any pre-trained R model and corresponding R scoring script. 
 
-![Operationalization of pre-trained R models via Python](images/o16nRegularMLRmodelsUsingAzurek8s.png "o16n of Regular ML R models Using Azure AKS diagram")
+![Architecture for building an AI pipeline:](https://user-images.githubusercontent.com/16708375/54639528-0013e680-4a64-11e9-8b9b-13ddc79c20b6.png "Architecture for building an AI pipeline:")
+Figure 1. Architecture for building an AI pipeline:
+ 1. Data is ingested for training
+ 2. __ML__ model is build through experimantation
+ 3. Model and scoring script are packaged in a scoring Docker image that can be stored in Azure Container Registry [ACR](https://docs.microsoft.com/en-us/azure/container-registry/)
+ 4. Scoring  Docker image is deployed (operationalized) on an Azure Container Instance [ACI](https://docs.microsoft.com/en-us/azure/container-instances/) or an Azure Kubernetes Service [AKS](https://docs.microsoft.com/en-us/azure/aks/) cluster for inference at scale.
+ 5. New data is being scored in real time or in batch mode.
+ 6. Model score is being used for AI consumption
 
-R model operationalization (__o16n__) is not covered under current AML SDK. However, here we leverage [rpy2](https://rpy2.bitbucket.io/), a Python package that allows one to easily start and interact with an R session embedded in a Python process. Furthermore, the powerful experimentation infrastructure in AML SDK, while tuned for ML model training, can be used to develop a dockerized o16n scoring script. The o16n script is written in python, but it has an R session created via rpy2, which runs the user provided R scoring script. R models can thus be run via simple interactions with an R session: load model (once only, when scoring service is created), pass R scoring data, and get back results.  
+R model operationalization (__o16n__) is not covered under current AML SDK. However, here we leverage [rpy2](https://rpy2.bitbucket.io/), a Python package that allows one to easily start and interact with an R session embedded in a Python process. Furthermore, the powerful experimentation infrastructure in AML SDK (Figure 2), while tuned for ML model training, can be used to develop a dockerized o16n scoring script. 
 
+![Experimentation and Orchestration:](https://user-images.githubusercontent.com/16708375/54651601-fe5d1980-4a89-11e9-8617-be4ac90c3c02.png "Experimentation and Orchestration")
+Figure 2. Experimentation framework in AML SDK:
+1. The the data scientist's Orchestration machine shown on upper right can be a Windows or Linux local computer or a VM, running the AML SDK docker cotnainer or having the SDK installed.
+2. During experimentation phase:
+    * an Azure __Ubuntu__ VM is used as a [compute target](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-set-up-training-targets) to develop and run docker containers for ML model training
+    * in AML SDK, the training code components are transparently separated in training script, dependencies (conda env .yml file) and any standard or third party base docker image.
+    * training infrastructure management is managed by AML SDK.
+3. Operationalization. Same code structure (scoring script, dependencies, base docker image) is used to create the operationalization docker image which can be deployed to an [ACI](https://docs.microsoft.com/en-us/azure/container-instances/) or an [AKS](https://docs.microsoft.com/en-us/azure/aks/) cluster for inference.  
+
+
+The o16n script is written in python, but it has an R session created via rpy2, which runs the user provided R scoring script. R models can thus be run via simple interactions with an R session (Figure 3): load model (once only, when scoring service is created), pass R scoring data, and get back results.  
+![Experimentation and Orchestration:](https://user-images.githubusercontent.com/16708375/54651754-a377f200-4a8a-11e9-85fe-bb76b3b40e66.png "Experimentation and Orchestration")
+Figure 3. Code structure for R models operationalization via Python and AML SDK:
+1. Mdel can be any file, not only a Python pkl file but also an R model saved as an .rds file. AML SDK [model management](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-model-management-and-deployment) allows transparent tracking and versioning of any model.
+2. Python operationalization script has two main functions:
+    * init() is run once when the deployment service is created. It is used here to start and R session and load the R model.
+    * run() is called every time the service is used to score new data. It is used here to pass data to the R session created when the service is deployed, call the user provided R scoring function, return the results to python, and finally return the service results to calling app.
+3. Conda env file can be used to install R (conda package [r-base](https://anaconda.org/r/r-base), other R libraries like [kernlab](https://anaconda.org/conda-forge/r-kernlab), and python pcakges like rpy2). Base docker image requirements are not very complex since we just need rpy2 and the ability to run R.
+  
 The overall design of a ML application development process in the cloud connects the data scientist's Windows or Linux orchestration machine (a local computer or an Azure Virtual Machine (VM)) to an Azure __Ubuntu__ VM used as a [compute target](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-set-up-training-targets) to run  distinct docker containers for each of the folowing 4 fundamental [stages](https://user-images.githubusercontent.com/16708375/48814903-90d2f380-ed0a-11e8-8f4e-928171dea7dc.png):
  * Orchestration (__o11n__): This is covered by AML SDK, which can be  [installed](https://docs.microsoft.com/en-us/python/api/overview/azure/ml/install?view=azure-ml-py)  by the user, or used directly inside a docker container that runs a [simple prebuilt AML SDK docker image](https://github.com/georgeAccnt-GH/PowerAIWithDocker/blob/master/amlsdk/docker_history/dockerfile_aml-sdk_docker_image_sdk.v.1.0.17). For simplicity the latter option is used here. The orchestration docker [container](https://hub.docker.com/r/georgedockeraccount/aml-sdk_docker_image/tags) is started manually on either Windows (local) machine or directly on an Ubuntu Azure VM compute target (in which case the compute target machine is the same as the one used for orchestration). 
  
@@ -136,25 +162,25 @@ Use orchestration machine:
 docker login 
 ```
 4. This project notebooks can be run in an AML SDK container on windows or linux orchestration machine:  
-> __on a windows local machine (for example using an Anaconda prompt)__ (with [PORT] being a port of your choice, for example 8889, or even 8888), do the three setup steps described above (repo cloning, cd into repo directory and check dockerhub connection) and then start the AML SDK  __Linux__ docker container:
+> __on a windows local machine (for example using an Anaconda prompt)__ (with [VISIBLE_PORT] being a port of your choice, for example 8889, or even 8888, while INSIDE_PORT is usually 8888), do the three setup steps described above (repo cloning, cd into repo directory and check dockerhub connection) and then start the AML SDK  __Linux__ docker container :
 ```
-(base) C:\Users\Documents>cd C:\repos\AMLSDKOperationalizationRModels>docker run -it -p [PORT]:8888 -v %cd%:/workspace georgedockeraccount/aml-sdk_docker_image:sdk.v.1.0.17 /bin/bash -c "jupyter notebook --notebook-dir=/workspace --ip=0.0.0.0 --port=8888 --no-browser --allow-root"  
+docker run -it -p [VISIBLE_PORT]:[INSIDE_PORT] -v %cd%:/workspace georgedockeraccount/aml-sdk_docker_image:sdk.v.1.0.17 /bin/bash -c "jupyter notebook --notebook-dir=/workspace --ip=0.0.0.0 --port=[INSIDE_PORT] --no-browser --allow-root"  
 
 ```   
-After Jupiter server server starts, it will display a security token that should be used below, and port 8888 which should __not__ be used. Use [PORT] value instead of 8888 displayed by Jupiter server running in SDK Docker container. Point a local browser on the orchestration machine to:  
+After Jupiter server server starts, it will display a security token that should be used below, and port [INSIDE_PORT] opened inside the container which should __not__ be used. Use [__VISIBLE_PORT__] value instead of [INSIDE_PORT] (typically 8888) displayed by Jupiter server running in SDK Docker container. Point a local browser on the orchestration machine to:  
 ```
-http://localhost:[PORT]/?token=securitytoken_printed_by_jupyter_session_started_above
+http://localhost:[VISIBLE_PORT]/?token=securitytoken_printed_by_jupyter_session_started_above
 
 ```
   
-> __on an Azure Linux VM named [yourVM]__ (with [PORT] being any of the ports opened for Jupyter server when the orchestration VM was provisioned, similar to how the __customJupyterPorts__ were opened in the AZ CLI script above), ssh into [yourVM], do the three setup steps described above (repo cloning, cd into repo directory and check dockerhub connection) and then start the AML SDK __Linux__ docker container:
+> __on an Azure Linux VM named [yourVM]__ (with [VISIBLE_PORT] being any of the ports opened for Jupyter server when the orchestration VM was provisioned, similar to how the __customJupyterPorts__ were opened in the AZ CLI script above), ssh into [yourVM], do the three setup steps described above (repo cloning, cd into repo directory and check dockerhub connection) and then start the AML SDK __Linux__ docker container:
 ```
-[your_login_info]@[yourVM]:/repos/AMLSDKOperationalizationRModels$ docker run -it -p [PORT]:8888 -v ${PWD}:/workspace:rw georgedockeraccount/aml-sdk_docker_image:sdk.v.1.0.17 /bin/bash -c "jupyter notebook --notebook-dir=/workspace --ip=0.0.0.0 --port=8888 --no-browser --allow-root"  
+[your_login_info]@[yourVM]:/repos/AMLSDKOperationalizationRModels$ docker run -it -p [VISIBLE_PORT]:[INSIDE_PORT] -v ${PWD}:/workspace:rw georgedockeraccount/aml-sdk_docker_image:sdk.v.1.0.17 /bin/bash -c "jupyter notebook --notebook-dir=/workspace --ip=0.0.0.0 --port=[INSIDE_PORT] --no-browser --allow-root"  
 
 ```   
-After Jupiter server server starts, it will display a security token that should be used below, and port 8888 which should __not__ be used. Use [PORT] value instead of 8888 displayed by Jupiter server running in SDK Docker container. Point local (on any machine connected to the internet, including the orchestration machine) browser to:  
+After Jupiter server server starts, it will display a security token that should be used below, and port [INSIDE_PORT] (typically 8888) opened inside the container which should __not__ be used. Use [__VISIBLE_PORT__] value instead of [INSIDE_PORT] displayed by Jupiter server running in SDK Docker container. Point local (on any machine connected to the internet, including the orchestration machine) browser to:  
 ```
-[yourVM].[yourRegion].cloudapp.azure.com:[PORT]/?token=securitytoken_printed_by_jupyter_session_started_above  
+[yourVM].[yourRegion].cloudapp.azure.com:[VISIBLE_PORT]/?token=securitytoken_printed_by_jupyter_session_started_above  
 
 ```
 
