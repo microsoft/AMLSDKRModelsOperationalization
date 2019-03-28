@@ -1,0 +1,42 @@
+# AMLSDKRModelsOperationalization Pipeline 
+
+trigger:
+  batch: true
+  branches:
+    include:
+    - master
+    
+variables:
+- group: AzureKeyVault
+
+jobs:
+- job: AMLSDKRModelsPipelineJob
+  timeoutInMinutes: 300
+  cancelTimeoutInMinutes: 2
+  pool:
+    vmImage: 'Ubuntu-16.04'
+
+  steps:
+  - bash: |
+      source /usr/share/miniconda/etc/profile.d/conda.sh
+      # conda env create -f environment.yml
+      conda env list
+      # conda activate amlmm
+      echo Login Azure Account
+      az login -t $(sptenent) --service-principal -u $(spidentity) --password $(spsecret)
+    displayName: 'Configuration'
+
+  - bash: |
+      source /usr/share/miniconda/etc/profile.d/conda.sh
+
+      echo Execute Resource Group Delete
+      #existResponse=$(az group exists -n $(azurergname))
+      #if [ "$existResponse" == "true" ]; then
+      #  echo Deleting resource group $(azurergname) 
+      #  az group delete --name $(azurergname) --yes
+      #else
+      #  echo Resource group did not exist $(azurergname)
+      #fi
+      echo Done Cleanup
+    displayName: 'Cleanup'
+    condition: always()
