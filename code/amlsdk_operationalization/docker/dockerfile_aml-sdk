@@ -1,0 +1,35 @@
+
+FROM continuumio/miniconda3:4.5.12
+MAINTAINER George Iordanescu <ghiordan@microsoft.com>
+
+RUN apt-get update --fix-missing && apt-get install -y --no-install-recommends \
+    gcc g++ \
+    wget bzip2 \
+    curl apt-transport-https lsb-release gpg \
+    git make && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Azure CLI
+ENV AZ_CLI_REPO=stretch   
+RUN echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_CLI_REPO main" | \
+    tee /etc/apt/sources.list.d/azure-cli.list && \
+    curl -L https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    azure-cli        
+
+
+ADD aml_sdk_conda_dep_file.yml /tmp/aml_sdk_conda_dep_file.yml
+ENV CONDA_DIR /opt/conda
+ENV CONDA_ENV_NAME aml-sdk-conda-env    
+
+# reate aml sdk conda env defined by .yml file
+RUN /opt/conda/bin/conda env create -q --name $CONDA_ENV_NAME -f /tmp/aml_sdk_conda_dep_file.yml && \
+    /opt/conda/bin/conda clean  --yes --all 
+ENV CONDA_AUTO_UPDATE_CONDA=false
+ENV CONDA_DEFAULT_ENV=$CONDA_ENV_NAME
+ENV CONDA_PREFIX=$CONDA_DIR/envs/$CONDA_DEFAULT_ENV
+ENV PATH=$CONDA_PREFIX/bin:/opt/conda/bin:$PATH         
+        
+CMD /bin/bash
