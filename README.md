@@ -2,6 +2,7 @@
 
 ## _Note: This work is still in the testing phase._
 
+### Overview
 This is a tutorial on how to use [Azure Machine Learning SDK for Python](https://docs.microsoft.com/en-us/python/api/overview/azure/ml/intro?view=azure-ml-py) (__AML SDK__) to operationalize (Figure 1) pre-trained R models at scale in the cloud via [Azure Kubernetes Service](https://docs.microsoft.com/en-us/azure/aks/). While R models' operationalization (__o16n__) is not the focus of the current AML SDK release, we show here how to use [conda](https://conda.io/en/latest/)  to [install](https://docs.anaconda.com/anaconda/user-guide/tasks/use-r-language/) [R](https://anaconda.org/r/r-base) and R packages, and how to leverage the [rpy2](https://rpy2.bitbucket.io/) Python package to start and interact with an R session embedded in a Python process. 
 
 We focus here on standard (i.e. not deep learning) machine learning (__ML__) algorithms using a Kernel SVM based R model as an example. This solution can be generalized for any pre-trained R model with a corresponding R scoring script. 
@@ -15,6 +16,7 @@ Figure 1. Code structure for R models o16n via Python and AML SDK:
 3. The conda env file defines the  o16n Python environment and it provides a transparent encapsulation of all o16n R and Python packages that are added on top of the o16n base docker image. For R models o16n, we install the required Python packages (`rpy2`) and R ([r-base](https://anaconda.org/r/r-base)), as well as any required R libraries, like [kernlab](https://anaconda.org/conda-forge/r-kernlab) for example. 
 4. AML SDK o16n base docker image is predefined at present, but "bring your own base" (__BYOB__) docker image will be available soon. For R models o16n the base docker image requirements are not very complex since we just need `rpy2` and the ability to load and run our R model.  
     
+### Design
 #### AI solutions development pipeline in AML SDK
 The Azure ML application development process (Figure 2) connects the data scientist's Windows or Linux orchestration machine (a local computer or an Azure Virtual Machine (VM)) to an Azure __Ubuntu__ VM used as a [compute target](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-set-up-training-targets) to run distinct docker containers for each of the following four fundamental [stages](https://user-images.githubusercontent.com/16708375/48814903-90d2f380-ed0a-11e8-8f4e-928171dea7dc.png):
   1. Orchestration: This is covered by AML SDK, which can be  [installed](https://docs.microsoft.com/en-us/python/api/overview/azure/ml/install?view=azure-ml-py)  by the user, or used directly inside a docker container that runs a [simple prebuilt AML SDK docker image](https://github.com/georgeAccnt-GH/PowerAIWithDocker/blob/master/amlsdk/docker_history/dockerfile_aml-sdk_docker_image_sdk.v.1.0.17). For simplicity the latter option is used here. The orchestration docker [container](https://hub.docker.com/r/georgedockeraccount/aml-sdk_docker_image/tags) is started manually on either a local (Windows or Linux) machine, or on an Azure VM, or directly on an Ubuntu Azure VM compute target (in which case the compute target machine is the same as the one used for orchestration). 
@@ -188,11 +190,12 @@ az vm boot-diagnostics enable --name %prefix%testvm --resource-group %rsgname% -
      * restart the VM (using 'Restart' button on VM portal main blade)
 
   
-As described above, AML SDK [installation](https://docs.microsoft.com/en-us/python/api/overview/azure/ml/install?view=azure-ml-py) on the Windows or Linux orchestration machine is not used here. Instead the AML SDK is used directly in a docker container running a [transparently built](https://github.com/georgeAccnt-GH/PowerAIWithDocker/blob/master/amlsdk/docker_history/dockerfile_aml-sdk_docker_image_sdk.v.1.0.17) docker [image](https://hub.docker.com/r/georgedockeraccount/aml-sdk_docker_image/tags).
+As described above, AML SDK [installation](https://docs.microsoft.com/en-us/python/api/overview/azure/ml/install?view=azure-ml-py) on the Windows or Linux orchestration machine is not used here. Instead the AML SDK is used directly in a docker container running a [transparently built](https://github.com/georgeAccnt-GH/PowerAIWithDocker/blob/master/amlsdk/docker_history/) docker [image](https://hub.docker.com/r/georgedockeraccount/aml-sdk_docker_image/tags) e.g. __georgedockeraccount/aml-sdk_docker_imageazcli:sdk.v1.0.33__ .
 
    
-## Setup
+### Setup and Deployment Steps
 
+(see also the project makefile for similar instructions on how to run the notebooks in conda environments only or in docker containers)
 Use orchestration machine:
 1. Clone this repo
 2. `cd` into the repo directory.  
@@ -205,7 +208,7 @@ docker login
 > __on a windows local machine (for example using an Anaconda prompt)__:
     Start the AML SDK  __Linux__ docker container using command below (with [VISIBLE_PORT] being a port of your choice, for example 8889, or even 8888, while INSIDE_PORT is usually 8888)  :
 ```
-docker run -it -p [VISIBLE_PORT]:[INSIDE_PORT] -v %cd%:/workspace georgedockeraccount/aml-sdk_docker_image:sdk.v.1.0.21 /bin/bash -c "jupyter notebook --notebook-dir=/workspace --ip=0.0.0.0 --port=[INSIDE_PORT] --no-browser --allow-root"  
+docker run -it -p [VISIBLE_PORT]:[INSIDE_PORT] -v %cd%:/workspace [docker_image_name] /bin/bash -c "jupyter notebook --notebook-dir=/workspace --ip=0.0.0.0 --port=[INSIDE_PORT] --no-browser --allow-root"  
 
 ```   
 After Jupiter server starts, it will display a security token that should be used as shown below, and port [INSIDE_PORT] opened inside the container which should __not__ be used. Use [__VISIBLE_PORT__] value instead of [INSIDE_PORT] displayed by Jupiter server running in SDK Docker container. Point a local browser on the orchestration machine to:  
@@ -214,9 +217,9 @@ http://localhost:[VISIBLE_PORT]/?token=securitytoken_printed_by_jupyter_session_
 
 ```
 > __on an Azure Linux VM named [yourVM]__:
-    ssh into [yourVM], do the three setup steps described above (repo cloning, cd into repo directory and check dockerhub connection) and then start the AML SDK __Linux__ docker container using command below (with [VISIBLE_PORT] being any of the ports opened for Jupyter server when the orchestration VM was provisioned, for example by opening the __customJupyterPorts__ in the AZ CLI script above), 
+    ssh into [yourVM], do the three setup steps described above (repo cloning, cd into repo directory and check dockerhub connection) and then either run "__make jupyter jupyter_port=[VISIBLE_PORT]__" or start the AML SDK __Linux__ docker container manually using command below (with [VISIBLE_PORT] being any of the ports opened for Jupyter server when the orchestration VM was provisioned, for example by opening the __customJupyterPorts__ in the AZ CLI script above), 
 ```
-[your_login_info]@[yourVM]:/repos/AMLSDKOperationalizationRModels$ docker run -it -p [VISIBLE_PORT]:[INSIDE_PORT] -v ${PWD}:/workspace:rw georgedockeraccount/aml-sdk_docker_image:sdk.v.1.0.21 /bin/bash -c "jupyter notebook --notebook-dir=/workspace --ip=0.0.0.0 --port=[INSIDE_PORT] --no-browser --allow-root"  
+[your_login_info]@[yourVM]:/repos/AMLSDKOperationalizationRModels$ docker run -it -p [VISIBLE_PORT]:[INSIDE_PORT] -v ${PWD}:/workspace:rw [docker_image_name] /bin/bash -c "jupyter notebook --notebook-dir=/workspace --ip=0.0.0.0 --port=[INSIDE_PORT] --no-browser --allow-root"  
 
 ```   
 After Jupiter server starts, it will display a security token that should be used below, and port [INSIDE_PORT] opened inside the container which should __not__ be used. Use [__VISIBLE_PORT__] value instead of [INSIDE_PORT] displayed by Jupiter server running in SDK Docker container. Point local (on any machine connected to the internet, including the orchestration machine) browser to:  
@@ -230,15 +233,21 @@ After Jupiter server starts, it will display a security token that should be use
   * `000_RegularR_RealTime_Scripts_and_SDK_setup.ipynb`: the notebook is used as an IDE to write utility scripts to disk. It also sets up AML SDK infra-structure: authorization, Azure resources (resource groups, AML workspaces) provisioning. Significant steps:
     * Locate notebook cell that contains sensitive information, and replace the existing empty python dictionary variable __sensitive_info__ with the required information: Azure subscription ID, AML SDK Compute Target machine login and configuration info. 
     * You should do the step described above only once, and thus save the info in the untracked .env file. 
-    * Although setting up Service principal is optional, using the default values for Service Principal information in the sensitive info dictionary is __NOT__ optional. The get_auth() utility function defined in the notebook and saved in o16n_regular_ML_R_models_utils.py checks if Service Principal password has to default value ("YOUR_SERVICE_PRINCIPAL_PASSWORD") to switch to interactive Azure login.
+    * Although setting up Service principal is optional, using the default values for Service Principal information in the sensitive info dictionary is __NOT__ optional. The get_auth() utility function defined in the notebook and saved in o16n_regular_ML_R_models_utils.py checks if Service Principal password (SP_PASSWORD) is an empty string to switch to interactive Azure login.
 
-  * `010_RegularR_RealTime_test_score_in_docker.ipynb`: __optional__ notebook that shows how the AML SDK experimentation framework can be used to develop generic (i.e. not necesarily for ML training) containerized scripts. Significant steps:
+  * `010_RegularR_RealTime_test_score_in_docker.ipynb`:shows how the AML SDK experimentation framework can be used to develop generic (i.e. not necesarily for ML training) containerized scripts. 
+  Although this notebook is not directly relevant for operationalization, it should be run at least once to save ( see the code in cell `/code/amlsdk_operationalization/010_RegularR_RealTime_test_score_in_docker.ipynb#Create-scoring-script`) the scoring script.
+     Significant steps:
     * R model registration. Even if AML SDK is focused on python, any file can be registered and versioned. We __can__ access registered models even when using the AML SDK experimentation framework.
     * We use an already provisioned VM as an AML SDK un-managed [compute target](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-set-up-training-targets). As mentioned above, it is possible to use the same Linux VM as both a compute target machine and orchestration machine.
     * the script we develop is written an python. It creates an R session in function init() (which will be invoked once at o16n time in next notebook, when service is deployed) and loads the R model in R session memory. The R session is used for scoring in run() function. Besides R model loading at service creation time and regular scoring of new data, the scripts also report processing and data passing (python to R adn back) times. Results show the data passing times are relatively constant as a function of data size (10 ms) so the data transfer overhead is minimal especially for large data sets. 
 
  
   * `020_RegularR_RealTime_deploi_ACI_AKS.ipynb`: deploys the above o16n script and R model on an ACI and AKS. It creates an o16n image which can be pulled from its ACR and tested locally if needed using the SDK or the portal. The notebook also provisions and ACI for remote testing and finally and AKS cluster where the o16n image can be used to score data in real time (i.e. not batch processing) at scale.
+
+### Cleaning up
+Deleteing the resource group under which the Azure resources were deployed will clean your project resources. The resource group can be cleaned via Azure portal or via CLI:
+az group delete -n %rsgname% --no-wait --yes
 
 # Contributing
 
