@@ -21,7 +21,6 @@ help:
 	echo "$$PROJECT_HELP_MSG" | less
 
 setup:
-		conda env create --name $(aml_sdk_conda_env_name) -f docker/aml_sdk_conda_dep_file.yml
 ifndef TENANT_ID
 	@echo starting interactive login
 	az login  --output none
@@ -31,6 +30,8 @@ else
 	@echo using service principal login
 	az login -t ${TENANT_ID} --service-principal -u ${SP_USERNAME} --password ${SP_PASSWORD}
 endif
+	conda env create --name $(aml_sdk_conda_env_name) -f docker/aml_sdk_conda_dep_file.yml
+
 
 test-notebook000:
 	source activate $(aml_sdk_conda_env_name)
@@ -69,13 +70,14 @@ test-notebook020:
 		--log-output \
 		--no-progress-bar \
 		--kernel python3 \
-		-p version_of_image_to_deploy 5
+		-p version_of_image_to_deploy 1
 
 build:
 	echo Will build $(image_name)    
 	docker build -t $(image_name) -f docker/dockerfile_aml-sdk  docker 
     
 jupyter:
+	build
 	docker run \
 		--rm  \
 		--name aml-sdk_azcli_container \
